@@ -958,3 +958,18 @@ section[id] { scroll-margin-top: var(--header-h); }
   .mobile-menu__head { margin-bottom: 8px; }
   .mobile-menu__foot { margin-top: 10px; padding-top: 10px; }
 }
+
+/* ---------- Perbaikan HP / layar sentuh ---------- */
+/* Foto rumus: sebelum lensa aktif, geser vertikal tetap menggulir halaman;
+   saat lensa aktif, jari bebas menyeret lensa ke segala arah. */
+[data-formula] { touch-action: pan-y; }
+[data-formula].is-reacting { touch-action: none; }
+
+@media (max-width: 767px) {
+  /* foto "Tentang saya" tampil utuh di HP (sebelumnya disembunyikan) */
+  .about__photo { display: flex; justify-content: center; padding: 0 12px 12px; }
+  .about__photo img { width: min(72vw, 300px); max-width: none; height: auto; }
+  /* foto proyek potret tidak dipotong menjadi kotak lebar */
+  .project__visual--photo { height: clamp(240px, 70vw, 330px); }
+  .project__visual--photo img { object-fit: contain; object-position: center; }
+}

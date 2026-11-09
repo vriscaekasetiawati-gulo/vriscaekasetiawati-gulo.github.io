@@ -597,7 +597,7 @@
   // Arahkan kursor ke foto (hero & "Tentang saya"): hanya bagian di sekitar kursor (sebuah
   // "lensa" bulat) yang berubah menjadi potret dari rumus senyawa kimia, berwarna navy → magenta
   // seperti fenolftalein. Lensa mengikuti kursor; keluar dari foto = foto kembali utuh.
-  // Di HP/tablet: ketuk foto memunculkan lensa, ketuk di luar lensa memindahkannya, ketuk di dalamnya menutup.
+  // Di HP/tablet: ketuk foto memunculkan lensa, seret jari agar lensa mengikuti, ketuk di dalam lensa menutup (menutup sendiri setelah 3,5 detik).
   // Daftar rumus boleh diubah; angka setelah huruf otomatis menjadi subskrip (C20 → C₂₀).
   const FORMULAS = [
     'C20H14O4',   // fenolftalein (indikator titrasi)
@@ -906,20 +906,51 @@
 
     // Mouse: arahkan untuk mengubah, gerakkan untuk mengaduk, keluar untuk kembali
     fig.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') show(...local(e)); });
+    fig.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
+
+    // Layar sentuh / pena: ketuk untuk memunculkan lensa, lalu seret jari agar lensa mengikuti
+    // (seperti kursor). Ketuk di dalam lensa untuk menutup; lensa juga menutup sendiri
+    // setelah 3,5 detik tanpa disentuh, supaya halaman bisa digulir lagi.
+    let down = false; let dragged = false; let sx = 0; let sy = 0; let idle = 0;
+    const armIdle = () => { clearTimeout(idle); if (lastType !== 'mouse') idle = setTimeout(hide, 3500); };
+
+    fig.addEventListener('pointerdown', (e) => {
+      lastType = e.pointerType;
+      if (e.pointerType === 'mouse') return;
+      down = true; dragged = false;
+      [sx, sy] = local(e);
+      clearTimeout(idle);
+    });
     fig.addEventListener('pointermove', (e) => {
-      if (e.pointerType !== 'mouse' || !on) return;
-      [tx, ty] = local(e);
+      if (e.pointerType === 'mouse') {
+        if (!on) return;
+        [tx, ty] = local(e);
+        kick();
+        return;
+      }
+      if (!down || !on) return;
+      const [x, y] = local(e);
+      if (!dragged && Math.hypot(x - sx, y - sy) < 8) return;   // abaikan getaran kecil
+      dragged = true;
+      tx = x; ty = y;
       kick();
     });
-    fig.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hide(); });
-    // Layar sentuh / pena: ketuk untuk mengubah, ketuk lagi untuk kembali
-    fig.addEventListener('pointerdown', (e) => { lastType = e.pointerType; });
+    const release = (e) => {
+      if (e.pointerType === 'mouse') return;
+      down = false;
+      if (on) armIdle();
+    };
+    fig.addEventListener('pointerup', release);
+    fig.addEventListener('pointercancel', release);
+
     fig.addEventListener('click', (e) => {
       if (lastType === 'mouse') return;
+      if (dragged) { dragged = false; return; }   // ini akhir dari seretan, bukan ketukan
       const [x, y] = local(e);
       if (!on) show(x, y);
       else if (Math.hypot(x - cx, y - cy) > r) { tx = x; ty = y; kick(); }   // ketuk di luar lensa: lensa pindah
-      else hide();
+      else { clearTimeout(idle); hide(); }
+      if (on) armIdle();
     });
 
     // Ukuran foto berubah (layar diputar/diperbesar): mulai lagi dari foto asli
