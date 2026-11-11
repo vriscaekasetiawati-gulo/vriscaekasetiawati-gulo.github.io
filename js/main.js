@@ -4,10 +4,11 @@
    Daftar isi:
    0.  Utilitas & pengaturan
    1.  Smooth scroll (gulir halus untuk mouse/trackpad)
-   2.  Pecah teks (judul huruf per huruf) & paragraf "tinta"
-   3.  Preloader: tinta dituang ke labu sampai titik akhir + animasi pembuka hero
+   2.  Pecah teks (judul & tulisan sambutan huruf per huruf) & paragraf "tinta"
+   3.  Pembuka: tombol masuk → tinta dituang (backsound aurora) → hero (sapaan suara)
    4.  Animasi saat elemen terlihat (IntersectionObserver)
    5.  Efek yang mengikuti posisi gulir (satu loop requestAnimationFrame)
+   5b. Hero: animasi benang WebThreads (React Bits)
    6.  Header, menu "tabel periodik", tautan jangkar
    7.  Kursor kontekstual, tombol magnetis, kemiringan 3D
    8.  Foto profil berubah menjadi rumus kimia
@@ -34,6 +35,7 @@
   const reduced = IKUTI_KURANGI_GERAKAN && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   const mqPin = window.matchMedia('(min-width: 1024px) and (min-height: 640px)');
+  const mqNarrow = window.matchMedia('(max-width: 1023px)');   // HP & tablet (hero bertumpuk)
 
   // Kunci/buka gulir halaman (dipakai menu, lightbox, dialog)
   let scrollLocks = 0;
@@ -138,6 +140,37 @@
     });
   }
 
+  // Tulisan sambutan hero: dipecah per huruf, tetapi pembungkus seperti <span class="hero__wave"> tetap ada.
+  // --i = urutan huruf di tiap baris (animasi masuk), --wi = urutan kata di kedua baris (efek menyala).
+  function splitHeadline() {
+    let wi = 0;
+    $$('.hero__headline .hero__fit').forEach((line) => {
+      let i = 0;
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach((node) => {
+        const frag = document.createDocumentFragment();
+        node.textContent.split(/(\s+)/).forEach((part) => {
+          if (!part) return;
+          if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(' ')); return; }
+          const w = document.createElement('span');
+          w.className = 'w';
+          w.style.setProperty('--wi', wi++);
+          for (const ch of part) {
+            const c = document.createElement('span');
+            c.className = 'c';
+            c.textContent = ch;
+            c.style.setProperty('--i', i++);
+            w.appendChild(c);
+          }
+          frag.appendChild(w);
+        });
+        node.replaceWith(frag);
+      });
+    });
+  }
+
   // Paragraf "tinta": kata-kata menyala satu per satu mengikuti gulir.
   function setupInk(el) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -176,20 +209,172 @@
     ink.lit = lit;
   }
 
-  // ---------- 3. Preloader: tinta dituang ke labu sampai titik akhir ----------
-  // Tampil SETIAP kali halaman dibuka atau dimuat ulang, sebagai jeda singkat sebelum isi muncul.
-  // Urutan: tetesan mengisi labu → cairan berubah merah muda (titik akhir) →
-  // merah muda membanjiri layar dari labu → surut ke bawah sambil membuka halaman.
-  // Ingin jeda lebih lama/pendek? Ubah angka MIN di bawah (milidetik).
+  // ---------- 3. Pembuka: tombol masuk → tinta dituang (+ backsound) → hero (+ sapaan suara) ----------
+  // Tampil SETIAP kali halaman dibuka atau dimuat ulang.
+  // Browser (Chrome, Edge, Safari, …) MELARANG halaman memutar suara sebelum pengunjung mengklik
+  // sesuatu. Karena itu pembuka diawali tombol "Masuk ke portofolio": klik itu sekaligus izin suara.
+  // Urutan: klik Masuk → tetesan mengisi labu + backsound "aurora" → cairan merah muda (titik akhir,
+  // tepat di puncak suara aurora) → merah muda membanjiri layar → surut ke bawah membuka hero →
+  // suara "Hello, welcome to my portfolio" sambil tulisan sambutan menyala kata demi kata.
   const PRELOADER = {
-    MIN: 1400,        // lama minimum tinta dituang
-    HOLD: 550,        // lama berhenti di "titik akhir" (cairan merah muda)
-    FLOOD: 500,       // lama merah muda menyebar memenuhi layar
-    MAX: 4500,        // batas maksimum menunggu foto & font walau internet lambat
+    MIN: 1400,            // lama minimum tinta dituang bila masuk TANPA suara (milidetik)
+    MIN_BERSUARA: 2000,   // lama tinta dituang bila bersuara: titik akhir jatuh di puncak backsound aurora
+    HOLD: 550,            // lama berhenti di "titik akhir" (cairan merah muda)
+    FLOOD: 500,           // lama merah muda menyebar memenuhi layar
+    MAX: 4500,            // batas maksimum menunggu foto & font walau internet lambat
   };
 
+  // Pengaturan suara (boleh diubah)
+  const SUARA = {
+    LATAR: 'assets/audio/aurora.mp3',          // backsound saat tinta dituang (React Bits Sound Lab: "aurora")
+    VOLUME_LATAR: 0.9,                          // 0 = senyap … 1 = penuh
+    KALIMAT: 'Hello, welcome to my portfolio',  // diucapkan suara browser saat hero muncul
+    BAHASA: 'en-US',                            // logat: 'en-US' (Amerika) atau 'en-GB' (Inggris)
+    KECEPATAN: 0.95,                            // 0.5 lambat … 1.5 cepat
+    NADA: 1.05,                                 // 0 berat … 2 tinggi
+    REKAMAN: '',                                // opsional: 'assets/audio/welcome.mp3' = pakai rekaman suaramu sendiri
+  };
+
+  // Pemutar suara. Backsound memakai <audio>. Sapaan memakai suara bawaan browser (Web Speech API),
+  // atau file rekaman bila SUARA.REKAMAN diisi. Semua aman diabaikan bila browser tidak mendukung.
+  const sound = (() => {
+    let on = false;
+    let utterance = null;   // disimpan agar tidak "dibuang" browser sebelum selesai bicara (bug Chrome)
+    const makeAudio = (src) => {
+      if (!src) return null;
+      const audio = new Audio(src);
+      audio.preload = 'auto';   // diunduh sejak awal supaya langsung bunyi saat tombol diklik
+      return audio;
+    };
+    const latar = makeAudio(SUARA.LATAR);
+    const rekaman = makeAudio(SUARA.REKAMAN);
+    const tts = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window ? window.speechSynthesis : null;
+
+    // daftar suara bawaan dimuat browser secara bertahap
+    let voices = [];
+    const loadVoices = () => { try { voices = tts.getVoices(); } catch (e) { voices = []; } };
+    if (tts) {
+      loadVoices();
+      if (tts.addEventListener) tts.addEventListener('voiceschanged', loadVoices);
+      else tts.onvoiceschanged = loadVoices;
+    }
+
+    // suara favorit (paling natural lebih dulu): Edge, Chrome, iPhone/Mac, Windows
+    const FAVORIT = [/aria.*natural/i, /jenny.*natural/i, /ava.*natural/i, /emma.*natural/i, /google us english/i,
+      /samantha/i, /google uk english female/i, /zira/i, /female/i];
+    function pickVoice(localOnly) {
+      const lang = SUARA.BAHASA.slice(0, 2).toLowerCase();
+      const pool = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith(lang) && (!localOnly || v.localService));
+      for (const re of FAVORIT) {
+        const v = pool.find((x) => re.test(x.name));
+        if (v) return v;
+      }
+      const exact = SUARA.BAHASA.toLowerCase();
+      return pool.find((v) => v.lang.toLowerCase().replace('_', '-') === exact) || pool[0] || null;
+    }
+
+    function fade(audio, to, ms, done) {
+      const from = audio.volume;
+      const start = performance.now();
+      const step = (now) => {
+        const k = Math.min(1, (now - start) / ms);
+        try { audio.volume = from + (to - from) * k; } catch (e) { /* iPhone: volume tidak bisa diatur */ }
+        if (k < 1) requestAnimationFrame(step);
+        else if (done) done();
+      };
+      requestAnimationFrame(step);
+    }
+
+    function speak(onStart, localOnly) {
+      if (!tts || !SUARA.KALIMAT) return false;
+      if (!voices.length) loadVoices();
+      const u = new SpeechSynthesisUtterance(SUARA.KALIMAT);
+      const voice = pickVoice(localOnly);
+      if (voice) u.voice = voice;
+      u.lang = voice ? voice.lang : SUARA.BAHASA;
+      u.rate = SUARA.KECEPATAN;
+      u.pitch = SUARA.NADA;
+      u.volume = 1;
+      let started = false;
+      let retried = localOnly || !voice || voice.localService;
+      // suara online (mis. "Google US English") kadang gagal saat internet lambat → ulangi dengan suara bawaan perangkat
+      const retry = () => {
+        if (started || retried) return;
+        retried = true;
+        tts.cancel();
+        setTimeout(() => speak(onStart, true), 80);
+      };
+      u.onstart = () => { started = true; if (onStart) onStart(); };
+      u.onerror = retry;
+      setTimeout(retry, 2500);
+      utterance = u;
+      if (tts.speaking || tts.pending) tts.cancel();
+      setTimeout(() => tts.speak(utterance), 50);
+      return true;
+    }
+
+    return {
+      get on() { return on; },
+      // Dipanggil LANGSUNG di dalam klik tombol Masuk: membuka izin suara & memutar backsound
+      start() {
+        on = true;
+        if (latar) {
+          latar.volume = SUARA.VOLUME_LATAR;
+          latar.currentTime = 0;
+          const p = latar.play();
+          if (p && p.catch) p.catch(() => {});
+        }
+        if (rekaman) {
+          // iPhone: rekaman harus "dipancing" di dalam klik supaya boleh diputar beberapa detik kemudian
+          rekaman.muted = true;
+          const p = rekaman.play();
+          if (p && p.then) p.then(() => { rekaman.pause(); rekaman.currentTime = 0; rekaman.muted = false; }).catch(() => { rekaman.muted = false; });
+        } else if (tts) {
+          // iPhone: suara browser juga harus "dipancing" di dalam klik
+          try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; tts.speak(u); } catch (e) { /* abaikan */ }
+        }
+      },
+      // backsound memudar saat halaman portofolio terbuka
+      fadeOut(ms) {
+        if (!latar || latar.paused) return;
+        fade(latar, 0, ms, () => latar.pause());
+      },
+      // sapaan "Hello, welcome to my portfolio"; onStart dipanggil tepat saat suara mulai terdengar
+      greet(onStart) {
+        if (!on) return false;
+        if (rekaman) {
+          rekaman.currentTime = 0;
+          rekaman.muted = false;
+          const p = rekaman.play();
+          if (p && p.then) p.then(() => { if (onStart) onStart(); }).catch(() => speak(onStart, false));
+          else if (onStart) onStart();
+          return true;
+        }
+        return speak(onStart, false);
+      },
+    };
+  })();
+
+  let threads = null;   // benang WebThreads di hero (dibuat di bagian 5b saat tirai merah muda surut)
+
   function startHero() {
+    startThreads();
     root.classList.add('is-ready');
+    setTimeout(greet, 300);   // saat "HELLO," mulai muncul
+  }
+
+  // Sapaan suara + tulisan sambutan menyala kata demi kata + kilau cahaya berjalan di benang
+  function greet() {
+    const headline = $('.hero__headline');
+    let done = false;
+    const glow = () => {
+      if (done) return;
+      done = true;
+      if (headline) headline.classList.add('is-speaking');
+      if (threads) threads.pulse(0.05);
+    };
+    if (sound.greet(glow)) setTimeout(glow, 1800);   // cadangan bila suara telat atau tidak tersedia
+    else glow();
   }
 
   function runPreloader() {
@@ -200,6 +385,7 @@
     const volume = $('[data-volume]', preloader);
     const note = $('[data-note]', preloader);
     const flask = $('.preloader__svg', preloader);
+    const gate = $('[data-gate]', preloader);
     const heroImg = $('.hero__photo img');
     const tasks = [
       document.fonts ? document.fonts.ready : Promise.resolve(),
@@ -213,10 +399,36 @@
     let loaded = 0;
     tasks.forEach((task) => task.then(() => { loaded++; }));
 
-    const t0 = performance.now();
-    const MIN = reduced ? 900 : PRELOADER.MIN;
+    // selama pembuka tampil, isi halaman di belakangnya tidak bisa difokus atau diklik
+    const behind = $$('body > *').filter((el) => el !== preloader && !/^(script|svg)$/i.test(el.tagName));
+    behind.forEach((el) => { el.inert = true; });
+
+    let t0 = 0;
+    let MIN = PRELOADER.MIN;
     let shown = 0;
-    let last = t0;
+    let last = 0;
+
+    // Mulai menuang. withSound = true bila pengunjung memilih "Masuk ke portofolio" (bersuara).
+    function begin(withSound) {
+      if (t0) return;                               // cegah klik ganda
+      if (withSound) sound.start();                 // harus langsung di dalam klik, sebelum hal lain
+      MIN = reduced ? 900 : withSound ? PRELOADER.MIN_BERSUARA : PRELOADER.MIN;
+      preloader.classList.remove('is-waiting');
+      if (gate) gate.classList.add('is-gone');
+      note.textContent = 'Menuang tinta, menunggu titik akhir…';
+      t0 = last = performance.now();
+      requestAnimationFrame(tick);
+    }
+
+    if (gate) {
+      preloader.classList.add('is-waiting');        // labu kosong, tetesan belum jatuh
+      gate.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-enter]');
+        if (btn) begin(btn.dataset.enter === 'sound');
+      });
+    } else {
+      begin(false);
+    }
 
     function tick(now) {
       const elapsed = now - t0;
@@ -232,7 +444,6 @@
       if (shown < 1) requestAnimationFrame(tick);
       else finish();
     }
-    requestAnimationFrame(tick);
 
     function finish() {
       preloader.classList.add('is-endpoint');       // cairan berubah merah muda = titik akhir
@@ -251,7 +462,14 @@
 
     function leave() {
       preloader.classList.add('is-leaving');        // surut ke bawah, halaman terbuka dari atas
+      behind.forEach((el) => { el.inert = false; });
       unlockScroll();
+      sound.fadeOut(1400);                          // backsound memudar, berganti sapaan
+      startThreads();                               // benang mulai digambar saat tirai surut
+      if (hero) {                                   // fokus keyboard pindah ke awal halaman
+        if (!hero.hasAttribute('tabindex')) hero.setAttribute('tabindex', '-1');
+        hero.focus({ preventScroll: true });
+      }
       setTimeout(startHero, 450);                   // mulai animasi masuk saat merah muda mulai surut
       setTimeout(() => preloader.remove(), 1100);
     }
@@ -285,6 +503,8 @@
   // ---------- 5. Efek mengikuti gulir ----------
   const header = $('.site-header');
   const hero = $('.hero');
+  const heroHeadline = $('.hero__headline');
+  const heroHello = $('.hero__hello');
   const heroWord = $('.hero__word');
   const heroPhoto = $('.hero__photo');
   const burette = $('.burette');
@@ -307,22 +527,40 @@
     lastY: window.scrollY,
     active: '',
     menuOpen: false,
+    heroBottom: 0,
+    headerH: 72,
   };
 
-  // Atur ukuran kata PORTOFOLIO agar pas selebar layar
-  function fitHeroWord() {
-    if (!heroWord) return;
+  // Atur ukuran tulisan sambutan: PORTFOLIO selebar mungkin (tetapi tidak terlalu tinggi di layar
+  // laptop yang pendek, dan di laptop/desktop berhenti sebelum kepala di foto), lalu baris
+  // "HELLO, WELCOME TO MY" disamakan lebarnya dengan PORTFOLIO.
+  function fitHeadline() {
+    const wordFit = heroWord && $('.hero__fit', heroWord);
+    if (!wordFit) return;
     heroWord.style.fontSize = '';
-    const inner = heroWord.firstElementChild || heroWord;
     const size = parseFloat(getComputedStyle(heroWord).fontSize);
-    const textWidth = inner.getBoundingClientRect().width;
-    const available = heroWord.clientWidth * 0.95;
-    if (textWidth > 0) heroWord.style.fontSize = `${Math.min((size * available) / textWidth, 340).toFixed(2)}px`;
+    const width = wordFit.offsetWidth;                  // offsetWidth tidak terpengaruh animasi huruf
+    let available = heroWord.clientWidth * 0.95;
+    if (!mqNarrow.matches && heroPhoto) {               // foto di kanan: kata boleh masuk 10% ke kotak foto
+      const start = parseFloat(getComputedStyle(heroHeadline).paddingLeft) || 0;
+      available = Math.min(available, heroPhoto.offsetLeft + heroPhoto.offsetWidth * 0.1 - start);
+    }
+    const maxByHeight = state.vh * 0.255;               // tinggi kata ≈ 0,8 × ukuran huruf
+    if (width > 0) heroWord.style.fontSize = `${Math.min((size * available) / width, 340, maxByHeight).toFixed(2)}px`;
+
+    const helloFit = heroHello && $('.hero__fit', heroHello);
+    if (!helloFit) return;
+    heroHello.style.fontSize = '';
+    const helloSize = parseFloat(getComputedStyle(heroHello).fontSize);
+    const helloWidth = helloFit.offsetWidth;
+    if (helloWidth > 0) heroHello.style.fontSize = `${Math.min((helloSize * wordFit.offsetWidth * 0.97) / helloWidth, 150).toFixed(2)}px`;
   }
 
   function measure() {
     state.vh = window.innerHeight;
-    fitHeroWord();
+    fitHeadline();
+    state.headerH = header.offsetHeight;
+    state.heroBottom = hero ? hero.getBoundingClientRect().bottom + window.scrollY : 0;
 
     // Bagian proyek: tinggi = jarak geser horizontal + satu layar
     state.pinOn = !reduced && mqPin.matches && !!track;
@@ -377,6 +615,7 @@
 
     // Header: muncul saat menggulir ke atas, sembunyi saat ke bawah
     header.classList.toggle('is-scrolled', y > 20);
+    header.classList.toggle('is-on-dark', y + state.headerH * 0.5 < state.heroBottom);   // di atas hero hitam: teks putih
     if (!state.menuOpen) {
       if (dy > 4 && y > vh * 0.7) header.classList.add('is-hidden');
       else if (dy < -4 || y < vh * 0.3) header.classList.remove('is-hidden');
@@ -400,9 +639,9 @@
     }
 
     if (!reduced) {
-      // Hero: kata besar bergerak lebih lambat dari foto (efek kedalaman)
-      if (y < vh * 1.3 && heroWord) {
-        heroWord.style.transform = `translate3d(0, ${(y * 0.3).toFixed(1)}px, 0)`;
+      // Hero: tulisan sambutan bergerak lebih lambat dari foto (efek kedalaman)
+      if (y < vh * 1.3 && heroHeadline) {
+        heroHeadline.style.transform = `translate3d(0, ${(y * 0.3).toFixed(1)}px, 0)`;
         heroPhoto.style.transform = `translate3d(0, ${(y * 0.12).toFixed(1)}px, 0)`;
       }
       // Kontak: cairan merah muda naik saat bagian ini masuk layar
@@ -440,6 +679,40 @@
       const p = clamp((card.offsetLeft - 48) / state.pinDistance, 0, 1);
       window.scrollTo(0, state.projectsTop + p * state.pinDistance);
     });
+  }
+
+  // ---------- 5b. Hero: animasi benang WebThreads (React Bits) ----------
+  // Benang bercahaya merah muda & putih di latar hitam hero. Benang terdekat dengan kursor menyala,
+  // dan klik di area hero mengirim kilau cahaya di sepanjang benang.
+  // Daftar lengkap pengaturan (sama dengan tabel props React Bits) ada di js/web-threads.js.
+  const BENANG = {
+    colors: ['#C8306F', '#F0559B', '#FFC4DE'],   // merah muda tua → merah muda → merah muda pucat
+    coreColor: '#FFFFFF',                         // putih di titik benang bertemu
+    threadCount: 6,                               // jumlah benang (maks. 24)
+    speed: 0.22,                                  // kecepatan anyaman
+    spread: 0.2,                                  // seberapa lebar benang menyebar
+    taper: 0.55,                                  // benang luar mengayun lebih lebar (kecil = lebih rapat)
+    position: 0.5,                                // tinggi anyaman: 0 bawah … 1 atas
+    pinch: 0.64,                                  // titik temu benang: 0 kiri … 1 kanan (di samping foto)
+    glow: 0.018,                                  // kuat cahaya
+    brightness: 0.6,                              // kecerahan
+    depth: 0.4,                                   // benang memelintir 3D (yang di belakang lebih tipis)
+    fade: 0.35,                                   // ujung kiri-kanan memudar
+    pulses: 0.35,                                 // denyut cahaya yang berjalan menuju titik temu
+    shimmer: true,                                // ayunan halus yang tidak seragam
+    dpr: 1.25,                                    // ketajaman kanvas (lebih kecil = lebih ringan di laptop lama)
+    respectReducedMotion: IKUTI_KURANGI_GERAKAN,
+  };
+  // HP & tablet: foto berada di tengah, jadi titik temu benang di tengah, setinggi badan di foto
+  const BENANG_HP = { pinch: 0.5, position: 0.64, spread: 0.12 };
+  const benangSekarang = () => ({ ...BENANG, ...(mqNarrow.matches ? BENANG_HP : {}) });
+
+  function startThreads() {
+    if (threads || !window.WebThreads) return;   // sudah jalan, atau web-threads.js gagal dimuat
+    const el = $('.hero__threads');
+    if (!el) return;
+    threads = window.WebThreads(el, benangSekarang());
+    mqNarrow.addEventListener('change', () => threads.set(benangSekarang()));
   }
 
   // ---------- 6. Header, menu "tabel periodik", tautan jangkar ----------
@@ -614,15 +887,22 @@
     [0, [6, 26, 45]], [0.3, [16, 50, 79]], [0.52, [110, 40, 104]],
     [0.68, [200, 48, 111]], [0.84, [236, 102, 160]], [1, [246, 178, 206]],
   ];
-  const PALETTE = Array.from({ length: 32 }, (_, i) => {
+  // versi untuk foto di hero yang berlatar hitam: gelap = merah muda tua, terang = putih
+  const INK_STOPS_DARK = [
+    [0, [104, 24, 66]], [0.3, [160, 36, 98]], [0.52, [210, 58, 124]],
+    [0.68, [240, 85, 155]], [0.84, [255, 168, 208]], [1, [255, 246, 250]],
+  ];
+  const makePalette = (stops) => Array.from({ length: 32 }, (_, i) => {
     const t = i / 31;
     let j = 0;
-    while (j < INK_STOPS.length - 2 && t > INK_STOPS[j + 1][0]) j++;
-    const [t1, c1] = INK_STOPS[j];
-    const [t2, c2] = INK_STOPS[j + 1];
+    while (j < stops.length - 2 && t > stops[j + 1][0]) j++;
+    const [t1, c1] = stops[j];
+    const [t2, c2] = stops[j + 1];
     const k = (t - t1) / (t2 - t1);
     return `rgb(${c1.map((v, n) => Math.round(v + (c2[n] - v) * k)).join(',')})`;
   });
+  const PALETTE = makePalette(INK_STOPS);
+  const PALETTE_DARK = makePalette(INK_STOPS_DARK);
   const GLYPHS = [];
   FORMULAS.forEach((f) => {
     for (const ch of f) GLYPHS.push({ ch, sub: /\d/.test(ch) });
@@ -657,6 +937,7 @@
   }
 
   function formulaPhoto(fig, img) {
+    const palette = fig.closest('.hero') ? PALETTE_DARK : PALETTE;   // hero berlatar hitam
     const canvas = document.createElement('canvas');
     canvas.className = 'formula-canvas';
     canvas.setAttribute('aria-hidden', 'true');
@@ -785,7 +1066,7 @@
         glyphs.forEach((g) => {
           if (g.f !== f) return;
           o.globalAlpha = g.al;
-          o.fillStyle = PALETTE[g.c];
+          o.fillStyle = palette[g.c];
           o.fillText(g.ch, g.x, g.y);
         });
       });
@@ -1196,7 +1477,7 @@
 
   // ---------- 14. Mulai! ----------
   $$('[data-split]').forEach(splitChars);
-  if (heroWord) splitChars(heroWord);
+  splitHeadline();
   inks = $$('[data-ink]').map(setupInk);
   if (reduced) inks.forEach((ink) => { ink.words.forEach((w) => w.classList.add('is-lit')); ink.marks.forEach((m) => m.el.classList.add('is-marked')); });
 

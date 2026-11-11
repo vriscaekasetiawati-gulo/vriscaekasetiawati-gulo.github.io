@@ -68,17 +68,20 @@
     <symbol id="i-prev" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-flask" viewBox="0 0 24 24"><path d="M6.6 14.6h10.8l2.5 4.4A2 2 0 0 1 18.2 22H5.8a2 2 0 0 1-1.7-3z" fill="var(--flask-liquid, #C8306F)"/><path d="M9 2.5h6M10 2.5v6L4.1 19a2 2 0 0 0 1.7 3h12.4a2 2 0 0 0 1.7-3L14 8.5v-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M3.5 9.2h3.6L12 5v14l-4.9-4.2H3.5z" fill="currentColor"/><path d="M15.6 9.2a4 4 0 0 1 0 5.6M18.3 6.6a7.8 7.8 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   </svg>
 
   <a class="skip-link" href="#main">Lewati ke konten utama</a>
 
   <!-- ============ PRELOADER: tinta dituang ke labu sampai titik akhir (titrasi) ============
-       Tampil setiap kali halaman dibuka. Lama jedanya diatur di js/main.js bagian 3 (angka MIN). -->
-  <div class="preloader" aria-hidden="true">
-    <span class="preloader__flood"></span>
+       Tampil setiap kali halaman dibuka. Pengunjung klik "Masuk ke portofolio" dulu, karena browser
+       baru mengizinkan suara setelah ada klik. Setelah diklik: tinta dituang + backsound "aurora",
+       lalu hero muncul dengan sapaan suara. Pengaturan waktu & suara: js/main.js bagian 3. -->
+  <div class="preloader" role="dialog" aria-modal="true" aria-labelledby="preloader-brand">
+    <span class="preloader__flood" aria-hidden="true"></span>
     <div class="preloader__stage">
-      <p class="preloader__brand">Portofolio · Vrisca Gulo</p>
-      <svg class="preloader__svg" viewBox="0 0 200 270">
+      <p class="preloader__brand" id="preloader-brand">Portofolio · Vrisca Gulo</p>
+      <svg class="preloader__svg" viewBox="0 0 200 270" aria-hidden="true">
         <defs>
           <clipPath id="flask-clip"><path d="M88 128h24v34l40 74a10 10 0 0 1-9 15H57a10 10 0 0 1-9-15l40-74z"/></clipPath>
           <!-- permukaan cairan bergelombang (panjang gelombang 40) -->
@@ -111,11 +114,20 @@
           <path d="M84 128h32" class="pl-flask"/>
         </g>
       </svg>
-      <p class="preloader__reading"><span data-volume>0,00</span> mL</p>
-      <p class="preloader__note" data-note>Menuang tinta, menunggu titik akhir…</p>
+      <p class="preloader__reading" aria-hidden="true"><span data-volume>0,00</span> mL</p>
+      <p class="preloader__note" data-note>Labu siap. Klik masuk untuk menuang tinta.</p>
+      <!-- Tombol masuk ("login"): klik ini sekaligus izin memutar suara di browser -->
+      <div class="gate" data-gate>
+        <div class="gate__inner">
+          <button class="btn btn--endpoint gate__enter" type="button" data-enter="sound">
+            <svg class="btn__icon" aria-hidden="true"><use href="#i-sound"/></svg>Masuk ke portofolio
+          </button>
+          <button class="gate__quiet" type="button" data-enter="quiet">Masuk tanpa suara</button>
+        </div>
+      </div>
     </div>
     <!-- gelombang di tepi atas saat cairan merah muda "surut" ke bawah -->
-    <svg class="preloader__surface" viewBox="0 0 1200 40" preserveAspectRatio="none"><path d="M0 22Q75 2 150 22T300 22T450 22T600 22T750 22T900 22T1050 22T1200 22V40H0z"/></svg>
+    <svg class="preloader__surface" viewBox="0 0 1200 40" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22Q75 2 150 22T300 22T450 22T600 22T750 22T900 22T1050 22T1200 22V40H0z"/></svg>
   </div>
 
   <!-- Kursor kontekstual (hanya muncul di atas foto & galeri, desktop) -->
@@ -195,9 +207,19 @@
 
   <main id="main">
 
-    <!-- ============ 1. HERO ============ -->
+    <!-- ============ 1. HERO (hitam · merah muda · putih) ============ -->
     <section class="hero" id="top" aria-labelledby="hero-name">
-      <p class="hero__word" aria-hidden="true" data-fit>PORTOFOLIO</p>
+      <!-- Latar animasi benang: komponen WebThreads dari React Bits (js/web-threads.js).
+           Warna, jumlah & kecepatan benang diatur di js/main.js bagian 5b (BENANG). -->
+      <div class="hero__threads" aria-hidden="true"></div>
+
+      <!-- Tulisan sambutan. Ganti teksnya langsung di sini (tulis dengan huruf kapital).
+           Kedua baris otomatis disamakan lebarnya oleh js/main.js (fitHeadline). -->
+      <div class="hero__headline">
+        <p class="sr-only">Hello, welcome to my portfolio</p>
+        <p class="hero__hello" aria-hidden="true"><span class="hero__fit"><span class="hero__wave">HELLO,</span> WELCOME TO MY</span></p>
+        <p class="hero__word" aria-hidden="true"><span class="hero__fit">PORTFOLIO</span></p>
+      </div>
 
       <!-- data-formula: saat kursor diarahkan (atau foto diketuk di HP), foto berubah menjadi
            potret dari rumus senyawa kimia. Diatur di js/main.js bagian 8. -->
@@ -230,6 +252,8 @@
         <span>Gulir ke bawah</span>
       </a>
     </section>
+    <!-- penutup celah segitiga antara hero hitam dan pita kuning yang miring -->
+    <div class="hero__tail" aria-hidden="true"></div>
 
     <!-- Pita berjalan: daftar keahlian inti (dekoratif, isinya ada juga di bagian Keahlian) -->
     <div class="ticker" aria-hidden="true">
@@ -835,6 +859,8 @@
 
   <div class="toast" role="status" aria-live="polite"></div>
 
+  <!-- web-threads.js harus dimuat sebelum main.js -->
+  <script src="js/web-threads.js" defer></script>
   <script src="js/main.js" defer></script>
 </body>
 </html>
